@@ -48,7 +48,9 @@ Airspace footprints are **approximations for planning**, not an official FAA pro
 - Airspace class is inferred: `international` → Class B, IATA commercial → Class C,
   ICAO non-commercial → Class D, small/heliport → E/G. Ceiling = the class's typical ceiling
   (10,000 / 4,000 / 2,500 / 1,200 / 400 ft AGL).
-- No-fly zones = OSM `boundary=national_park` and `landuse=military` polygons.
+- No-fly zones = OSM national-park / nature-reserve / protected-area and military polygons.
+  OSM tagging of park boundaries is inconsistent, so not every park is captured — treat
+  conservation/restricted land with care and always confirm with B4UFLY.
 
 **Always verify with the official FAA tools (B4UFLY, FAADroneZone / LAANC) before flight.**
 

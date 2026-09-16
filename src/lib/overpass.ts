@@ -114,10 +114,17 @@ export async function fetchNoFlyZones(
   east: number,
 ): Promise<NoFlyZone[]> {
   const bb = bboxStr(south, west, north, east);
-  const program = `[out:json][timeout:25];
+  // US national parks are frequently mapped as `boundary=protected_area` or
+  // `leisure=nature_reserve` rather than `boundary=national_park`, so we query
+  // all three genuine no-fly sets (parks/reserves + military/restricted).
+  const program = `[out:json][timeout:35];
   (
     way["boundary"="national_park"](${bb});
     relation["boundary"="national_park"](${bb});
+    way["leisure"="nature_reserve"](${bb});
+    relation["leisure"="nature_reserve"](${bb});
+    way["boundary"="protected_area"](${bb});
+    relation["boundary"="protected_area"](${bb});
     way["landuse"="military"](${bb});
     relation["landuse"="military"](${bb});
   );

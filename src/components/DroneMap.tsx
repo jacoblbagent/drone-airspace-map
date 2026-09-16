@@ -13,6 +13,7 @@ if (import.meta.env.DEV) {
   w.__dist = dist;
   w.__pip = pointInZone;
   w.__fetchAirports = fetchAirports;
+  w.__fetchNoFlyZones = fetchNoFlyZones;
 }
 
 export interface Toggles {
