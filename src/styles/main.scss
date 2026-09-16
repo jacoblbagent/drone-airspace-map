@@ -422,6 +422,24 @@ body,
   pointer-events: none;
 }
 
+.footer-link {
+  position: absolute;
+  z-index: 800;
+  right: 16px;
+  bottom: 14px;
+  font-size: 11px;
+  color: $muted;
+  text-decoration: underline;
+  padding: 4px 8px;
+  background: rgba(12, 17, 23, 0.7);
+  border-radius: 5px;
+  opacity: 0.8;
+  &:hover {
+    opacity: 1;
+    color: $text;
+  }
+}
+
 // ---- Leaflet control theming ----------------------------------------------
 .leaflet-control-zoom a {
   background: $panel;

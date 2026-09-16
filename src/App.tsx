@@ -82,6 +82,15 @@ export default function App() {
       <div className="scale-note">
         Footprints are approximations for planning. Always verify with FAADroneZone / B4UFLY before flight.
       </div>
+
+      <a
+        className="footer-link"
+        href="https://jacoblbagent.github.io/fpv-buyers-guide/"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        Gear up → FPV Buyers Guide
+      </a>
     </div>
   );
 

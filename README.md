@@ -2,6 +2,8 @@
 
 **🔗 Live:** https://jacoblbagent.github.io/drone-airspace-map/
 
+**Related:** [FPV Buyers Guide](https://jacoblbagent.github.io/fpv-buyers-guide/) — hand-picked drone/goggle/radio/etc. gear, filtered by budget.
+
 **Where you can fly a drone — and how high you can legally go before you enter restricted airspace.**
 
 An interactive Leaflet map that classifies any point on Earth by its sUAS (drone) flight
