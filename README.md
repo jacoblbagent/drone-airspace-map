@@ -1,5 +1,7 @@
 # 🛸 DroneAirspace
 
+**🔗 Live:** https://jacoblbagent.github.io/drone-airspace-map/
+
 **Where you can fly a drone — and how high you can legally go before you enter restricted airspace.**
 
 An interactive Leaflet map that classifies any point on Earth by its sUAS (drone) flight
@@ -24,7 +26,12 @@ what altitude" verdict.
 
 ## Live demo
 
-🖥 http://localhost:5177 (dev) — general production build: `npm run build && npm run preview`.
+🌐 **Deployed:** https://jacoblbagent.github.io/drone-airspace-map/ (GitHub Pages, `gh-pages` branch)
+
+🖥 Local dev: http://localhost:5177 · local preview: `npm run build && npm run preview`
+
+**Deploy:** `GH_PAGES=true npm run build`, then push `dist/` to the `gh-pages` branch
+(temp-dir method; Pages source = `gh-pages` root).
 
 ## Quick start
 
