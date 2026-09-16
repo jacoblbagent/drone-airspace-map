@@ -6,36 +6,44 @@
 
 import { modelAirport, type AirportModel } from "./airspace";
 
-const ENDPOINT = "https://overpass-api.de/api/interpreter";
-const TIMEOUT = 30_000; // ms
+const MIRRORS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass.osm.ch/api/interpreter",
+];
+const TIMEOUT = 35_000; // ms until we abort a request
 
 function bboxStr(south: number, west: number, north: number, east: number) {
   return `${south.toFixed(4)},${west.toFixed(4)},${north.toFixed(4)},${east.toFixed(4)}`;
 }
 
 async function query(program: string, signal: AbortSignal) {
-  // Retry transient Overpass failures (429 rate-limit / 5xx / abort) with backoff.
-  const base = 1200;
+  // Try each mirror in turn; within a mirror, retry transient failures
+  // (429 / 5xx / network) with backoff. Public instances rate-limit, so a
+  // fallback chain keeps the app alive when one instance blocks us.
   let lastErr: unknown;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    if (signal.aborted) throw lastErr ?? new Error("aborted");
-    try {
-      const res = await fetch(ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ data: program }),
-        signal,
-      });
-      if (res.status === 429 || res.status >= 500) {
-        throw new Error(`Overpass HTTP ${res.status}`);
+  for (const ENDPOINT of MIRRORS) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (signal.aborted) throw lastErr ?? new Error("aborted");
+      try {
+        const res = await fetch(ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ data: program }),
+          signal,
+        });
+        if (res.status === 429 || res.status >= 500) {
+          throw new Error(`Overpass HTTP ${res.status} (${ENDPOINT})`);
+        }
+        if (!res.ok) throw new Error(`Overpass HTTP ${res.status} (${ENDPOINT})`);
+        const json = await res.json();
+        return json.elements || [];
+      } catch (e) {
+        lastErr = e;
+        if (signal.aborted) throw e;
+        await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt)));
       }
-      if (!res.ok) throw new Error(`Overpass HTTP ${res.status}`);
-      const json = await res.json();
-      return json.elements || [];
-    } catch (e) {
-      lastErr = e;
-      if (signal.aborted) throw e;
-      await new Promise((r) => setTimeout(r, base * Math.pow(2, attempt)));
     }
   }
   throw lastErr;
