@@ -57,6 +57,9 @@ export interface NearbyResult {
   lat: number;
   lng: number;
   status: FlyStatus;
+  /** Overrides the default verdict label / sub-line (used for 0 ft grid cells). */
+  statusLabel?: string;
+  statusTitle?: string;
   /** Highest altitude may lawfully be flown / requested, ft AGL. */
   ceiling: number;
   /** Effective airspace class at the point. */
@@ -143,10 +146,12 @@ export async function analyzePoint({ lat, lng, zones }: AnalyzeInput): Promise<N
       title: "UAS Facility Map",
       badge: grid.aptIcao,
       subtitle: insideGrid
-        ? `Permissible altitude for authorization: *** ft.`
+        ? `Permissible altitude for authorization: ${grid.ceiling} ft.`
         : `Nearest grid cell (${fmtMi(grid.distanceM)}): ${ceilingTxt}.`,
       distanceM: insideGrid ? undefined : grid.distanceM,
-      severity: grid.ceiling > 0 ? "info" : "caution",
+      // A 0 ft grid cell is the hard constraint at this location, so it reads
+      // as an advisory rather than a footnote.
+      severity: grid.ceiling > 0 ? "info" : "danger",
       detail: [
         "The FAA UAS Facility Map shows the maximum altitude (in feet above ground level) " +
           "at which a Part 107 remote pilot may be authorized to operate in controlled " +
@@ -433,11 +438,18 @@ export async function analyzePoint({ lat, lng, zones }: AnalyzeInput): Promise<N
   const surfaceE = airspaces.find((a) => a.inside && a.cls === "E" && a.floor === "surface");
 
   let status: FlyStatus = "fly";
+  let statusLabel: string | undefined;
+  let statusTitle: string | undefined;
   if (insideNps || insideZone || hardSua.length || security.length) {
     status = "no_fly";
-  } else if (grid && grid.inside && grid.ceiling === 0) {
-    // 0 ft grid cell: LAANC cannot authorize flight here.
-    status = "no_fly";
+  } else if (grid && grid.inside && grid.ceiling <= 0) {
+    // A 0 ft grid cell means LAANC cannot authorize any altitude here. Flight
+    // is not flatly prohibited — it needs a manually reviewed FAA DroneZone
+    // airspace authorization — so this is "authorization required", not
+    // "no fly", but it must never read as a routine LAANC request.
+    status = "authorization";
+    statusLabel = "Authorization Required";
+    statusTitle = "No LAANC available — FAA DroneZone authorization required";
   } else if (controlling || surfaceE) {
     status = "authorization";
   }
@@ -445,8 +457,8 @@ export async function analyzePoint({ lat, lng, zones }: AnalyzeInput): Promise<N
   const ceiling =
     status === "no_fly"
       ? ALT.NO_FLY
-      : grid && grid.inside && grid.ceiling > 0
-        ? grid.ceiling
+      : grid && grid.inside
+        ? Math.max(0, grid.ceiling)
         : ALT.DEFAULT_G;
 
   const airspaceClass = insideNps || insideZone
@@ -485,6 +497,8 @@ export async function analyzePoint({ lat, lng, zones }: AnalyzeInput): Promise<N
     lat,
     lng,
     status,
+    statusLabel,
+    statusTitle,
     ceiling,
     airspaceClass,
     items: [...head, ...rest],

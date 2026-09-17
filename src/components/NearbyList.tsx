@@ -34,6 +34,8 @@ interface Props {
 export default function NearbyList({ result, loading, onClose, onRefresh, onFlyTo }: Props) {
   if (!result) return null;
   const meta = STATUS_META[result.status];
+  const label = result.statusLabel || meta.label;
+  const title = result.statusTitle || meta.title;
   const dangerous = result.items.filter((i) => i.severity === "danger").length;
 
   return (
@@ -56,8 +58,8 @@ export default function NearbyList({ result, loading, onClose, onRefresh, onFlyT
       <div className="nv-verdict">
         <span className="nv-verdict-icon">{meta.icon}</span>
         <div className="nv-verdict-text">
-          <div className="nv-verdict-label">{meta.label}</div>
-          <div className="nv-verdict-title">{meta.title}</div>
+          <div className="nv-verdict-label">{label}</div>
+          <div className="nv-verdict-title">{title}</div>
         </div>
         <div className="nv-verdict-alt">
           <span className="nv-alt-big">{result.ceiling.toLocaleString()} ft</span>

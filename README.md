@@ -51,8 +51,10 @@ Everything degrades gracefully: if a layer fails, the items that did load are st
 ## Verdict logic
 
 - **No Fly** — inside a national park / protected area or restricted land, inside
-  prohibited/restricted/national-security airspace, inside a national-security UAS restriction,
-  or in a UAS Facility Map cell with a 0 ft ceiling (LAANC cannot authorize there).
+  prohibited/restricted/national-security airspace, or inside a national-security UAS restriction.
+- **Authorization Required** — a UAS Facility Map cell carrying a **0 ft** ceiling. LAANC cannot
+  grant any altitude there; flight needs a manually reviewed FAA DroneZone airspace authorization
+  and is frequently denied. Shown as `Authorization Required — no LAANC available`.
 - **LAANC Required** — inside Class B/C/D or a Class E surface area. Ceiling shown is the
   Facility Map grid value for the cell, otherwise 400 ft AGL.
 - **Fly OK** — Class G, no authorization needed, 400 ft AGL.
