@@ -19,6 +19,25 @@ export default function App() {
     zones: true,
   });
   const [geocoding, setGeocoding] = useState(false);
+  /** On-map "click the map for info" prompt, shown whenever no result is open. */
+  const [hintOpen, setHintOpen] = useState(() => {
+    try {
+      const stored = localStorage.getItem("droneairspace.hint.open");
+      if (stored !== null) return stored !== "0";
+    } catch {
+      /* storage unavailable */
+    }
+    return true;
+  });
+
+  function setHint(next: boolean) {
+    setHintOpen(next);
+    try {
+      localStorage.setItem("droneairspace.hint.open", next ? "1" : "0");
+    } catch {
+      /* non-fatal */
+    }
+  }
   const [layersOpen, setLayersOpen] = useState(() => {
     try {
       const stored = localStorage.getItem("droneairspace.layers.open");
@@ -145,6 +164,46 @@ export default function App() {
           </div>
         )}
       </aside>
+
+      {/*
+        Empty state: nothing is pinned, or the user closed the last result.
+        Tells them what the map can do, and collapses to a small toggle so it
+        never becomes permanent clutter.
+      */}
+      {!query &&
+        (hintOpen ? (
+          <aside className="map-hint" role="status">
+            <div className="mh-head">
+              <span className="mh-title">No spot selected</span>
+              <button
+                className="mh-icon-btn"
+                onClick={() => setHint(false)}
+                title="Collapse"
+                aria-label="Collapse hint"
+              >
+                ×
+              </button>
+            </div>
+            <p>
+              <strong>Click anywhere on the map</strong> — a colored zone, an airport
+              marker, or open ground — to see the fly / no-fly verdict, the maximum legal
+              altitude, and every airport, Class airspace and park that applies there.
+            </p>
+            <p className="mh-sub">
+              Zoom in (≥ zoom 8) to load live FAA &amp; NPS data for the visible area.
+            </p>
+          </aside>
+        ) : (
+          <button
+            className="map-hint-toggle"
+            onClick={() => setHint(true)}
+            aria-expanded={false}
+            title="Show map tips"
+          >
+            <span aria-hidden="true">❔</span>
+            Click the map for airspace info
+          </button>
+        ))}
 
       {query && (
         <NearbyList

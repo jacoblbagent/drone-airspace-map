@@ -380,6 +380,100 @@ label {
   }
 }
 
+// ---- Empty-state hint -------------------------------------------------------
+// Shown in the results slot while no spot is pinned (or after the user closed
+// the last result). Collapses to a small toggle in the same corner.
+.map-hint {
+  position: absolute;
+  /* Under the layers panel (1200): on sheet widths the expanded panel is the
+     deliberate overlay and must stay on top. */
+  z-index: 1150;
+  top: 76px;
+  right: 16px;
+  width: 300px;
+  background: rgba(17, 23, 31, 0.92);
+  backdrop-filter: blur(8px);
+  border: 1px solid $border;
+  border-left: 3px solid $accent;
+  border-radius: 12px;
+  padding: 12px 14px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  animation: slidein 0.22s ease;
+
+  .mh-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 8px;
+  }
+  .mh-title {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+    color: $text;
+  }
+  .mh-icon-btn {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: $muted;
+    font: inherit;
+    font-size: 16px;
+    line-height: 1;
+    padding: 0 2px;
+    cursor: pointer;
+    opacity: 0.8;
+    &:hover {
+      opacity: 1;
+      color: $text;
+    }
+  }
+  p {
+    margin: 0 0 8px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: $muted;
+    &:last-child {
+      margin-bottom: 0;
+    }
+    strong {
+      color: $text;
+    }
+  }
+  .mh-sub {
+    font-size: 11px;
+    opacity: 0.85;
+  }
+}
+
+// The collapsed form: just the instruction as a small pill.
+.map-hint-toggle {
+  position: absolute;
+  z-index: 1150;
+  top: 76px;
+  right: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(17, 23, 31, 0.92);
+  backdrop-filter: blur(8px);
+  border: 1px solid $border;
+  border-radius: 10px;
+  color: $muted;
+  font: inherit;
+  font-size: 11px;
+  padding: 7px 11px;
+  cursor: pointer;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.4);
+  opacity: 0.85;
+  &:hover {
+    opacity: 1;
+    color: $text;
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+}
+
 // ---- Relative-result dots ---------------------------------------------------
 .rel-dot {
   width: 10px;
@@ -854,6 +948,26 @@ $sev-ok: #22c55e;
   .nv-credit {
     display: block;
   }
+
+  /* The hint follows the results into the bottom-sheet slot. It sits bottom-left
+     (the top-right is the zoom control on these widths), clear of the
+     attribution note on tablets. */
+  .map-hint {
+    top: auto;
+    right: auto;
+    left: 16px;
+    bottom: 52px;
+    width: auto;
+    max-width: min(300px, calc(100vw - 32px));
+    animation: sheetup 0.26s cubic-bezier(0.22, 0.8, 0.3, 1);
+  }
+  .map-hint-toggle {
+    top: auto;
+    right: auto;
+    left: 16px;
+    bottom: 52px;
+    max-width: calc(100vw - 32px);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1035,6 +1149,30 @@ $sev-ok: #22c55e;
   .footer-link {
     display: none;
   }
+
+  // Nothing below the hint now, so it can sit right on the bottom edge, with
+  // a comfortable tap target for the collapse button.
+  .map-hint,
+  .map-hint-toggle {
+    left: 12px;
+    right: auto;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    max-width: calc(100vw - 24px);
+  }
+  .map-hint {
+    padding: 12px 14px 14px;
+    .mh-icon-btn {
+      min-width: 32px;
+      min-height: 32px;
+      margin-right: -6px;
+    }
+    p {
+      font-size: 12.5px;
+    }
+    .mh-sub {
+      font-size: 11.5px;
+    }
+  }
 }
 
 // Larger tablets: a 78dvh sheet is needlessly tall on a 1100px screen, and the
@@ -1118,6 +1256,16 @@ $sev-ok: #22c55e;
     }
   }
   .layers-panel .lp-head {
+    min-height: 44px;
+  }
+  /* Comfortable hit area for the hint's collapse button without growing the
+     card (negative margins keep the padding visually unchanged). */
+  .map-hint .mh-icon-btn {
+    min-width: 44px;
+    min-height: 44px;
+    margin: -10px -10px -10px 0;
+  }
+  .map-hint-toggle {
     min-height: 44px;
   }
   .ghost,
