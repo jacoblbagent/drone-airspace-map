@@ -26,6 +26,9 @@ if (import.meta.env.DEV) {
 
 export interface Toggles {
   airports: boolean;
+  /** Approximate per-airport control-radius circle. */
+  radius: boolean;
+  /** Published FAA Class B/C/D/E-surface polygons. */
   rings: boolean;
   zones: boolean;
 }
@@ -98,6 +101,7 @@ export default function DroneMap({
   const querySeq = useRef(0);
 
   const airportsLayer = useRef<L.LayerGroup>(L.layerGroup());
+  const radiusLayer = useRef<L.LayerGroup>(L.layerGroup());
   const ringsLayer = useRef<L.LayerGroup>(L.layerGroup());
   const zonesLayer = useRef<L.LayerGroup>(L.layerGroup());
   const queryLayer = useRef<L.LayerGroup>(L.layerGroup());
@@ -140,6 +144,7 @@ export default function DroneMap({
     }).addTo(map);
 
     airportsLayer.current.addTo(map);
+    radiusLayer.current.addTo(map);
     ringsLayer.current.addTo(map);
     zonesLayer.current.addTo(map);
     queryLayer.current.addTo(map);
@@ -306,6 +311,34 @@ export default function DroneMap({
       mk.addTo(layer);
     }
   }, [airports, toggles.airports]);
+
+  // ---- Control radius (approximate per-airport footprint) -------------------
+  // Kept alongside the published Class-airspace polygons: this is the quick
+  // "how far does this field's controlled area reach" hint, and unlike the
+  // polygons it is still visible in places the FAA publishes no surface area.
+  useEffect(() => {
+    const layer = radiusLayer.current;
+    layer.clearLayers();
+    if (!toggles.radius) return;
+    for (const a of airports) {
+      if (a.controlRadius <= 0) continue;
+      const colour = RING_COLOR[a.airspaceClass] || "#64748b";
+      L.circle([a.lat, a.lng], {
+        radius: a.controlRadius,
+        color: colour,
+        weight: 1.2,
+        dashArray: "3 5",
+        fillColor: colour,
+        fillOpacity: a.restricted ? 0.2 : 0.07,
+      })
+        .bindPopup(
+          `<h4>${escapeHtml(a.name)}</h4>
+           <p>Approx. control radius <strong>${nm(a.controlRadius)} nm</strong> · Class ${a.airspaceClass} · ceiling ${a.ceiling} ft AGL</p>
+           <p class="pop-note">Approximated from the field's type for planning. Switch on the Class airspace layer for the published FAA boundaries.</p>`,
+        )
+        .addTo(layer);
+    }
+  }, [airports, toggles.radius]);
 
   // ---- Controlled airspace (real FAA Class B/C/D/E-surface polygons) --------
   useEffect(() => {

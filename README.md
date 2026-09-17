@@ -25,13 +25,18 @@ Service data for that exact spot, then lists everything relevant to it.
   - **Airports & heliports** — real FAA idents/ICAO codes, type, elevation, with distance
   - **National Park Service units** — national parks, parkways (Blue Ridge Parkway), scenic trails
 - **Verdict header** — 🟢 Fly OK / 🟡 LAANC Required / 🔴 No Fly, plus the maximum AGL altitude.
-- **Map layers**, each toggled independently with live counts:
-  - Airport & heliport markers (FAA ADHP)
-  - **Real** controlled-airspace polygons — Class B/C/D and Class E surface (FAA Class Airspace),
-    not a circular approximation
-  - Parks & restricted areas — NPS boundaries plus prohibited/restricted/NSA airspace
+- **Map layers**, each toggled independently with live counts, in a collapsible panel:
+  - **Airport markers** — FAA ADHP airfields and heliports
+  - **Control radius** — dashed circle per airport showing its approximate
+    controlled-airspace footprint (kept because it still shows where the FAA publishes no
+    surface area)
+  - **Class airspace** — the *published* FAA Class B/C/D/E-surface polygons, with their real
+    vertical limits
+  - **Parks / restricted** — NPS boundaries plus prohibited/restricted/national-security airspace
 - **Search** — geocode a city/park/airport via Nominatim and jump to it.
 - **Refresh** — re-runs the airspace lookup for the pinned point.
+- **Collapsible Layers panel** — collapse it to a small pill so it stops covering the map; the
+  open/collapsed state is remembered between visits.
 
 ## Data sources (all live, all authoritative, no API key)
 
@@ -88,6 +93,9 @@ npm run dev        # http://localhost:5177
 
 - Layers load once you're zoomed to **zoom 8+**, for the padded visible viewport, so the data
   always matches what's on screen.
+- **Control radius** circles come from the field's type (international → 5 nm, regional → 4 nm,
+  towered/ICAO → 2.5 nm, small field → 1.5 nm, heliport/uncontrolled → none). They are planning
+  approximations, labelled as such — the **Class airspace** layer is the authoritative source.
 - DEV-only introspection hooks (`window.__map`, `window.__analyzePoint`, `window.__fetchAirports`,
   `window.__fetchNoFlyZones`, `window.__fetchControlledAirspace`) exist for automated testing and
   are tree-shaken from production builds.

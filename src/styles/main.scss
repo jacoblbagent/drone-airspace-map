@@ -250,6 +250,55 @@ body,
   border-radius: 10px;
   padding: 14px;
 
+  /* Collapsed: shrink to just the "Layers" pill. Specificity (2 classes)
+     beats the 200px width set in the responsive block below. */
+  &.is-collapsed {
+    width: auto;
+    padding: 7px 10px 7px 12px;
+  }
+
+  .lp-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    background: none;
+    border: none;
+    color: inherit;
+    font: inherit;
+    padding: 0;
+    margin: 0 0 10px;
+    cursor: pointer;
+    &:hover .lp-title {
+      color: $text;
+    }
+
+    .lp-title {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: $muted;
+      font-weight: 600;
+      transition: color 0.12s ease;
+    }
+    .lp-chevron {
+      margin-left: auto;
+      font-size: 12px;
+      line-height: 1;
+      color: $muted;
+      opacity: 0.8;
+      transition: transform 0.15s ease;
+    }
+  }
+
+  &.is-collapsed .lp-head {
+    margin: 0;
+  }
+
+  .lp-body {
+    /* nothing extra; the rows below carry the spacing */
+  }
+
   h3 {
     margin: 0 0 10px;
     font-size: 12px;

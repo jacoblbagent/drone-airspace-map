@@ -14,12 +14,30 @@ export default function App() {
   const [queryLoading, setQueryLoading] = useState(false);
   const [toggles, setToggles] = useState<Toggles>({
     airports: true,
+    radius: true,
     rings: true,
     zones: true,
   });
   const [geocoding, setGeocoding] = useState(false);
+  const [layersOpen, setLayersOpen] = useState(() => {
+    try {
+      return localStorage.getItem("droneairspace.layers.open") !== "0";
+    } catch {
+      return true;
+    }
+  });
 
   const toggle = (k: keyof Toggles) => setToggles((t) => ({ ...t, [k]: !t[k] }));
+  const toggleLayers = () =>
+    setLayersOpen((open) => {
+      const next = !open;
+      try {
+        localStorage.setItem("droneairspace.layers.open", next ? "1" : "0");
+      } catch {
+        /* non-fatal */
+      }
+      return next;
+    });
 
   return (
     <div className="app">
@@ -65,25 +83,43 @@ export default function App() {
         onLoadState={(s) => setLoadState((l) => ({ ...l, ...s }))}
       />
 
-      <aside className="layers-panel">
-        <h3>Layers</h3>
-        <ToggleRow label="Airport markers" k="airports" checked={toggles.airports} onChange={toggle} count={airports.length} />
-        <ToggleRow label="Controlled airspace" k="rings" checked={toggles.rings} onChange={toggle} count={airspace.length} />
-        <ToggleRow label="Parks / restricted" k="zones" checked={toggles.zones} onChange={toggle} count={zones.length} />
-        <div className="panel-hint">
-          <p>
-            <strong>Click anywhere</strong> on the map to list the airspace, UAS Facility
-            Map ceiling, fixed flyer sites, airports and parks that apply to that spot.
-          </p>
-          <p>
-            Zoom in (≥ zoom 8) to load <strong>live FAA &amp; NPS data</strong> for the
-            visible area — airports, controlled-airspace polygons and protected or
-            restricted areas.
-          </p>
-          <button className="ghost" onClick={clearQuery}>
-            Clear pin
-          </button>
-        </div>
+      <aside className={`layers-panel${layersOpen ? "" : " is-collapsed"}`}>
+        <button
+          className="lp-head"
+          onClick={toggleLayers}
+          aria-expanded={layersOpen}
+          title={layersOpen ? "Collapse layers" : "Expand layers"}
+        >
+          <span className="lp-title">Layers</span>
+          <span className="lp-chevron" aria-hidden="true">
+            {layersOpen ? "▾" : "▸"}
+          </span>
+        </button>
+        {layersOpen && (
+          <div className="lp-body">
+            <ToggleRow label="Airport markers" k="airports" checked={toggles.airports} onChange={toggle} count={airports.length} />
+            <ToggleRow label="Control radius" k="radius" checked={toggles.radius} onChange={toggle} count={airports.length} />
+            <ToggleRow label="Class airspace" k="rings" checked={toggles.rings} onChange={toggle} count={airspace.length} />
+            <ToggleRow label="Parks / restricted" k="zones" checked={toggles.zones} onChange={toggle} count={zones.length} />
+            <div className="panel-hint">
+              <p>
+                <strong>Click anywhere</strong> on the map to list the airspace, UAS Facility
+                Map ceiling, fixed flyer sites, airports and parks that apply to that spot.
+              </p>
+              <p>
+                Zoom in (≥ zoom 8) to load <strong>live FAA &amp; NPS data</strong> for the
+                visible area — airports, airspace polygons and protected or restricted areas.
+              </p>
+              <p>
+                <em>Control radius</em> is an approximation from the field's type;{" "}
+                <em>Class airspace</em> is the published FAA boundary.
+              </p>
+              <button className="ghost" onClick={clearQuery}>
+                Clear pin
+              </button>
+            </div>
+          </div>
+        )}
       </aside>
 
       {query && (
