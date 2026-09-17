@@ -12,6 +12,8 @@ export default function App() {
   const [loadState, setLoadState] = useState({ airports: false, zones: false });
   const [query, setQuery] = useState<NearbyResult | null>(null);
   const [queryLoading, setQueryLoading] = useState(false);
+  /** Point being queried right now — labels the in-flight indicator. */
+  const [pending, setPending] = useState<{ lat: number; lng: number } | null>(null);
   const [toggles, setToggles] = useState<Toggles>({
     airports: true,
     radius: true,
@@ -122,7 +124,10 @@ export default function App() {
           // preference.
           if (r && window.innerWidth <= 900) setLayersOpen(false);
         }}
-        onQueryLoading={setQueryLoading}
+        onQueryLoading={(l, at) => {
+          setQueryLoading(l);
+          setPending(l ? (at ?? null) : null);
+        }}
         onLoadState={(s) => setLoadState((l) => ({ ...l, ...s }))}
       />
 
@@ -166,11 +171,34 @@ export default function App() {
       </aside>
 
       {/*
+        A click is in flight and nothing is open yet: show the wait in the same
+        slot the results will land in, so the click feels answered immediately.
+      */}
+      {!query && queryLoading && (
+        <aside className="map-hint is-loading" role="status" aria-live="polite">
+          <div className="mh-head">
+            <span className="mh-spinner" aria-hidden="true" />
+            <span className="mh-title">Checking this spot…</span>
+          </div>
+          {pending && (
+            <div className="mh-coords">
+              {pending.lat.toFixed(4)}, {pending.lng.toFixed(4)}
+            </div>
+          )}
+          <p>
+            Querying the live FAA UAS Facility Map, Class &amp; Special Use Airspace,
+            airports, fixed flyer sites and NPS boundaries.
+          </p>
+        </aside>
+      )}
+
+      {/*
         Empty state: nothing is pinned, or the user closed the last result.
         Tells them what the map can do, and collapses to a small toggle so it
         never becomes permanent clutter.
       */}
       {!query &&
+        !queryLoading &&
         (hintOpen ? (
           <aside className="map-hint" role="status">
             <div className="mh-head">

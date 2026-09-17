@@ -48,7 +48,8 @@ interface Props {
   onZones: (z: NoFlyZone[]) => void;
   onAirspace: (a: AirspaceZone[]) => void;
   onQuery: (q: NearbyResult | null) => void;
-  onQueryLoading: (loading: boolean) => void;
+  /** Second arg carries the point being queried, so the UI can label the wait. */
+  onQueryLoading: (loading: boolean, at?: { lat: number; lng: number }) => void;
   onLoadState: (s: Partial<LoadState>) => void;
 }
 
@@ -68,6 +69,16 @@ const RING_COLOR: Record<string, string> = {
 };
 
 const MIN_LOAD_ZOOM = 8;
+
+/** Pin for the clicked point. `loading` adds the in-flight pulse. */
+function queryIcon(loading: boolean) {
+  return L.divIcon({
+    className: "",
+    html: `<div class="query-dot${loading ? " is-loading" : ""}"></div>`,
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
+  });
+}
 
 function airportIcon(ap: AirportModel, dim: boolean) {
   const c = CLASS_COLOR[ap.airspaceClass] || "#94a3b8";
@@ -183,20 +194,18 @@ export default function DroneMap({
 
       const seq = ++querySeq.current;
       queryLayer.current.clearLayers();
-      L.marker([lat, lng], {
-        icon: L.divIcon({
-          className: "",
-          html: `<div class="query-dot"></div>`,
-          iconSize: [14, 14],
-          iconAnchor: [7, 7],
-        }),
+      // The pin pulses while the query is in flight, then settles — so a click
+      // always gives immediate feedback even before the results land.
+      const dotMarker = L.marker([lat, lng], {
+        icon: queryIcon(true),
         interactive: false,
       }).addTo(queryLayer.current);
 
-      onQueryLoading(true);
+      onQueryLoading(true, { lat, lng });
       analyzePoint({ lat, lng, zones: zonesRef.current })
         .then((res) => {
           if (seq !== querySeq.current) return; // stale click, drop it
+          dotMarker.setIcon(queryIcon(false));
           onQuery(res);
           // Drop a small dot on each result that has a location, so the list
           // and the map stay linked. Marker failures must never take down the
@@ -246,6 +255,7 @@ export default function DroneMap({
         })
         .catch((e) => {
           if (import.meta.env.DEV) console.warn("airspace query failed", e);
+          dotMarker.setIcon(queryIcon(false));
           if (seq === querySeq.current) onQuery(null);
         })
         .finally(() => {
