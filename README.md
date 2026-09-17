@@ -6,25 +6,58 @@
 
 **Where you can fly a drone — and how high you can legally go before you enter restricted airspace.**
 
-An interactive Leaflet map that classifies any point on Earth by its sUAS (drone) flight
-eligibility under Part 107-style rules. Click anywhere to get an instant "can I fly, and up to
-what altitude" verdict.
+An interactive Leaflet map that classifies any point by its sUAS (drone) flight eligibility
+under Part 107-style rules. **Click anywhere** and the app queries live FAA and National Park
+Service data for that exact spot, then lists everything relevant to it.
 
 ---
 
 ## What it does
 
-- **Live airport data** — loads real aerodromes from OpenStreetMap (via Overpass) for the region
-  you've zoomed into (zoom ≥ 8).
-- **Controlled-airspace rings** — each airport gets an approximate controlled-airspace footprint
-  and a ceiling, inferred from its type/size (Class B/C/D/E). Click an airport for its popup.
-- **No-fly zones** — national parks and military/restricted areas are shaded red.
-- **Click-to-query** — click any spot for a legal verdict:
-  - 🟢 **Fly OK** — operating in Class G, no authorization needed, max **400 ft AGL**.
-  - 🟡 **LAANC required** — inside controlled airspace (Class B/C/D); get FAA authorization.
-  - 🔴 **No Fly** — inside a national park or restricted area.
-- **Layers panel** — toggle airports, rings, and no-fly zones independently (with live counts).
+- **Click anywhere → "Relevant at this location"** — an FAA-listing-style rundown of every airspace
+  record that applies to the point you clicked, each with its distance and an expandable
+  **more** detail:
+  - **UAS Facility Map** — the LAANC grid ceiling: *"Permissible altitude for authorization: 400 ft."*
+  - **Class airspace** — e.g. `ASHEVILLE CLASS C · Class: C · surface → 6,200 ft MSL`
+  - **Special use airspace** — MOAs, prohibited / restricted / national-security areas
+  - **Part-time national security UAS flight restrictions**
+  - **Recreational Fixed Flyer Sites** — e.g. `NC-805`, with ceiling, boundary and sponsor contact
+  - **Airports & heliports** — real FAA idents/ICAO codes, type, elevation, with distance
+  - **National Park Service units** — national parks, parkways (Blue Ridge Parkway), scenic trails
+- **Verdict header** — 🟢 Fly OK / 🟡 LAANC Required / 🔴 No Fly, plus the maximum AGL altitude.
+- **Map layers**, each toggled independently with live counts:
+  - Airport & heliport markers (FAA ADHP)
+  - **Real** controlled-airspace polygons — Class B/C/D and Class E surface (FAA Class Airspace),
+    not a circular approximation
+  - Parks & restricted areas — NPS boundaries plus prohibited/restricted/NSA airspace
 - **Search** — geocode a city/park/airport via Nominatim and jump to it.
+- **Refresh** — re-runs the airspace lookup for the pinned point.
+
+## Data sources (all live, all authoritative, no API key)
+
+| Data | Source |
+| --- | --- |
+| UAS Facility Map (LAANC grid ceilings) | FAA `FAA_UAS_FacilityMap_Data_V5` FeatureServer |
+| Class airspace + vertical limits | FAA `Class_Airspace` FeatureServer |
+| Special use airspace / national-security restrictions | FAA `Special_Use_Airspace`, `Part_Time_National_Security_UAS_Flight_Restrictions` |
+| Airports & heliports | FAA `ADHP` (Airport/Heliport data) |
+| Recreational flyer fixed sites | FAA `Recreational_Flyer_Fixed_Sites` |
+| National park units, parkways, trails | NPS Land Resources Division boundary service |
+| Basemap tiles / geocoding | OpenStreetMap tiles (with `referrerPolicy: 'origin'`), Nominatim |
+
+Both ArcGIS hosts send `access-control-allow-origin: *`, so the browser queries them directly.
+Everything degrades gracefully: if a layer fails, the items that did load are still shown.
+
+## Verdict logic
+
+- **No Fly** — inside a national park / protected area or restricted land, inside
+  prohibited/restricted/national-security airspace, inside a national-security UAS restriction,
+  or in a UAS Facility Map cell with a 0 ft ceiling (LAANC cannot authorize there).
+- **LAANC Required** — inside Class B/C/D or a Class E surface area. Ceiling shown is the
+  Facility Map grid value for the cell, otherwise 400 ft AGL.
+- **Fly OK** — Class G, no authorization needed, 400 ft AGL.
+- Class A and Class E transition areas (700/1200 ft AGL) are deliberately excluded from the
+  listing — they cannot constrain a flight at or below 400 ft AGL.
 
 ## Live demo
 
@@ -46,31 +79,24 @@ npm run dev        # http://localhost:5177
 
 - **React 19 + TypeScript + Vite + SCSS**
 - **Leaflet** (OpenStreetMap tiles, `referrerPolicy: 'origin'`)
-- **Overpass API** for live OSM airport & park/military data
+- **FAA + NPS ArcGIS FeatureServer REST** for all aviation/land data (no key required)
 - **Nominatim** for search geocoding
-
-## How the rules work / data provenance
-
-Airspace footprints are **approximations for planning**, not an official FAA product:
-
-- Airports come from OpenStreetMap `aeroway=aerodrome` (real positions, names, codes).
-- Airspace class is inferred: `international` → Class B, IATA commercial → Class C,
-  ICAO non-commercial → Class D, small/heliport → E/G. Ceiling = the class's typical ceiling
-  (10,000 / 4,000 / 2,500 / 1,200 / 400 ft AGL).
-- No-fly zones = OSM national-park / nature-reserve / protected-area and military polygons.
-  OSM tagging of park boundaries is inconsistent, so not every park is captured — treat
-  conservation/restricted land with care and always confirm with B4UFLY.
-
-**Always verify with the official FAA tools (B4UFLY, FAADroneZone / LAANC) before flight.**
 
 ## Notes
 
-- Zoom into a region to fetch data — the map loads airports & parks for the area around the
-  viewport center once you're at zoom 8+.
-- Overpass is a free public instance; under heavy use it may rate-limit (the app retries and
-  degrades gracefully — it never crashes without data).
-- A small DEV-only introspection hook (`window.__airports` / `window.__zones`) exists for
-  automated testing and is tree-shaken from production builds.
+- Layers load once you're zoomed to **zoom 8+**, for the padded visible viewport, so the data
+  always matches what's on screen.
+- DEV-only introspection hooks (`window.__map`, `window.__analyzePoint`, `window.__fetchAirports`,
+  `window.__fetchNoFlyZones`, `window.__fetchControlledAirspace`) exist for automated testing and
+  are tree-shaken from production builds.
+
+## Caveats
+
+- The Facility Map ceiling and airspace limits are shown for **planning**. They are not a grant of
+  authority — you still need a LAANC request or a DroneZone airspace authorization.
+- NPS prohibition covers launching, landing and operating from NPS land and water (36 CFR 1.5,
+  NPS Policy Memorandum 14-05). Overflight is not itself prohibited, but avoid it where asked.
+- **Always verify with the official FAA tools (B4UFLY, FAADroneZone / LAANC) before flight.**
 
 ## Deployment
 

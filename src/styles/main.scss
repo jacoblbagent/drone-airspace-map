@@ -240,7 +240,8 @@ body,
 .layers-panel {
   position: absolute;
   z-index: 900;
-  top: 76px;
+  /* Clear of Leaflet's zoom control, which sits at the top-left of the map. */
+  top: 152px;
   left: 16px;
   width: 230px;
   background: rgba(17, 23, 31, 0.92);
@@ -306,105 +307,339 @@ body,
   }
 }
 
-// ---- Status card -----------------------------------------------------------
-.status-card {
+// ---- Relative-result dots ---------------------------------------------------
+.rel-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid #0b0f14;
+  &.sev-danger {
+    background: #ef4444;
+  }
+  &.sev-caution {
+    background: #facc15;
+  }
+  &.sev-info {
+    background: #38bdf8;
+  }
+  &.sev-ok {
+    background: #22c55e;
+  }
+}
+
+// ---- Nearby ("what's here?") panel -----------------------------------------
+$sev-danger: #ef4444;
+$sev-caution: #facc15;
+$sev-info: #38bdf8;
+$sev-ok: #22c55e;
+
+.nearby-panel {
   position: absolute;
   z-index: 950;
+  top: 76px;
   right: 16px;
-  bottom: 20px;
-  width: 330px;
-  background: rgba(17, 23, 31, 0.95);
-  backdrop-filter: blur(8px);
+  width: 384px;
+  max-height: calc(100% - 132px);
+  display: flex;
+  flex-direction: column;
+  background: rgba(17, 23, 31, 0.96);
+  backdrop-filter: blur(10px);
   border: 1px solid $border;
   border-radius: 12px;
-  padding: 16px;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
-  animation: slideup 0.22s ease;
+  overflow: hidden;
+  animation: slidein 0.22s ease;
 
   &.status-fly {
-    border-top: 3px solid #22c55e;
+    border-top: 3px solid $sev-ok;
   }
   &.status-authorization {
-    border-top: 3px solid #facc15;
+    border-top: 3px solid $sev-caution;
   }
   &.status-nofly {
-    border-top: 3px solid #ef4444;
+    border-top: 3px solid $sev-danger;
   }
+}
 
-  .close {
-    position: absolute;
-    top: 10px;
-    right: 12px;
+.nv-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-bottom: 1px solid $border;
+  flex-shrink: 0;
+
+  .nv-coords {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 11px;
+    color: $muted;
+  }
+  .nv-loading {
+    font-family: inherit;
+    color: $accent;
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  .nv-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 4px;
+  }
+  .nv-icon-btn {
     background: none;
     border: none;
     color: $muted;
-    font-size: 20px;
-    cursor: pointer;
+    font-size: 15px;
     line-height: 1;
-  }
-  .sc-loc {
-    margin: 0 0 8px;
-    font-size: 11px;
-    color: $muted;
-    font-family: ui-monospace, Menlo, monospace;
-  }
-  .sc-status {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 10px;
-    .sc-icon {
-      font-size: 24px;
+    padding: 3px 6px;
+    cursor: pointer;
+    border-radius: 5px;
+    &:hover {
+      color: $text;
+      background: rgba(255, 255, 255, 0.06);
     }
-    .sc-label {
-      font-weight: 700;
-      font-size: 16px;
-    }
-    .sc-title {
-      font-size: 12px;
-      color: $muted;
-    }
-  }
-  .sc-ceiling {
-    background: $panel-2;
-    border: 1px solid $border;
-    border-radius: 8px;
-    padding: 10px 12px;
-    display: flex;
-    flex-direction: column;
-    margin-bottom: 10px;
-    .sc-big {
-      font-size: 26px;
-      font-weight: 800;
-      letter-spacing: 0.3px;
-    }
-    .sc-sub {
-      font-size: 11px;
-      color: $muted;
-    }
-  }
-  .sc-reasons {
-    margin: 0 0 10px;
-    padding-left: 18px;
-    font-size: 12px;
-    line-height: 1.5;
-    color: #c9d3dd;
-  }
-  .sc-footer {
-    font-size: 11px;
-    color: $muted;
-    border-top: 1px solid $border;
-    padding-top: 8px;
   }
 }
-@keyframes slideup {
+
+.nv-verdict {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  background: $panel-2;
+  border-bottom: 1px solid $border;
+  flex-shrink: 0;
+
+  .nv-verdict-icon {
+    font-size: 22px;
+    line-height: 1;
+  }
+  .nv-verdict-label {
+    font-weight: 700;
+    font-size: 15px;
+    line-height: 1.15;
+  }
+  .nv-verdict-title {
+    font-size: 11px;
+    color: $muted;
+    margin-top: 2px;
+  }
+  .nv-verdict-alt {
+    margin-left: auto;
+    text-align: right;
+    display: flex;
+    flex-direction: column;
+    .nv-alt-big {
+      font-size: 19px;
+      font-weight: 800;
+      letter-spacing: 0.2px;
+    }
+    .nv-alt-sub {
+      font-size: 10px;
+      color: $muted;
+    }
+  }
+}
+
+.nv-list-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 11px 12px 7px;
+  flex-shrink: 0;
+
+  h3 {
+    margin: 0;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: $muted;
+    font-weight: 600;
+  }
+  .nv-count {
+    margin-left: auto;
+    font-size: 10.5px;
+    color: $muted;
+  }
+}
+
+.nv-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  flex: 1 1 auto;
+}
+
+.nv-item {
+  position: relative;
+  border-top: 1px solid $border;
+
+  &::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: $sev-info;
+    opacity: 0.75;
+  }
+  &.sev-danger::before {
+    background: $sev-danger;
+    opacity: 1;
+  }
+  &.sev-caution::before {
+    background: $sev-caution;
+  }
+  &.sev-ok::before {
+    background: $sev-ok;
+  }
+  &.is-open::before {
+    opacity: 1;
+  }
+}
+
+.nv-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  padding: 10px 12px 11px 14px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+  &:hover {
+    background: rgba(255, 255, 255, 0.035);
+  }
+
+  .nv-row-main {
+    display: block;
+    min-width: 0;
+  }
+  .nv-title-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+  }
+  .nv-title {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.1px;
+  }
+  .nv-badge {
+    font-size: 10px;
+    color: $muted;
+    border: 1px solid $border;
+    border-radius: 4px;
+    padding: 0 5px;
+    line-height: 15px;
+    white-space: nowrap;
+  }
+  .nv-sub {
+    display: block;
+    margin: 3px 0 0;
+    font-size: 11.5px;
+    line-height: 1.45;
+    color: #c2ccd7;
+  }
+  .nv-row-side {
+    margin-left: auto;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 5px;
+  }
+  .nv-dist {
+    font-size: 11px;
+    color: $muted;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .nv-more {
+    font-size: 11px;
+    color: $accent;
+    text-decoration: underline;
+    white-space: nowrap;
+  }
+}
+
+.nv-detail {
+  padding: 0 14px 12px 14px;
+
+  p {
+    margin: 0 0 8px;
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: #c2ccd7;
+  }
+  .nv-detail-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-top: 2px;
+  }
+  .nv-ghost {
+    background: transparent;
+    color: $muted;
+    border: 1px solid $border;
+    border-radius: 5px;
+    padding: 3px 9px;
+    font-size: 11px;
+    cursor: pointer;
+    opacity: 0.85;
+    &:hover {
+      opacity: 1;
+      color: $text;
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+  }
+  .nv-link {
+    font-size: 11px;
+    color: $accent;
+    text-decoration: underline;
+    &::after {
+      content: " ↗";
+    }
+  }
+}
+
+.nv-errors {
+  margin: 0;
+  padding: 8px 14px;
+  font-size: 11px;
+  color: #fbbf24;
+  border-top: 1px solid $border;
+  flex-shrink: 0;
+}
+
+.nv-foot {
+  padding: 9px 14px 10px;
+  font-size: 10px;
+  line-height: 1.45;
+  color: rgba(154, 167, 181, 0.85);
+  border-top: 1px solid $border;
+  flex-shrink: 0;
+}
+
+@keyframes slidein {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateX(10px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateX(0);
   }
 }
 
@@ -426,7 +661,8 @@ body,
   position: absolute;
   z-index: 800;
   right: 16px;
-  bottom: 14px;
+  /* Sits above the OSM attribution chip rather than on top of it. */
+  bottom: 34px;
   font-size: 11px;
   color: $muted;
   text-decoration: underline;
@@ -472,10 +708,14 @@ body,
   .layers-panel {
     width: 200px;
   }
-  .status-card {
-    right: 10px;
+  .layers-panel {
+    top: 146px;
+  }
+  .nearby-panel {
     left: 10px;
+    right: 10px;
     width: auto;
-    bottom: 12px;
+    top: 70px;
+    max-height: calc(100% - 86px);
   }
 }

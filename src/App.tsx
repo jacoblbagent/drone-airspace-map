@@ -1,16 +1,17 @@
 import { useState } from "react";
 import DroneMap, { type Toggles } from "./components/DroneMap";
-import StatusCard from "./components/StatusCard";
-import type { AirportModel, QueryResult } from "./lib/airspace";
-import type { NoFlyZone } from "./lib/overpass";
-
-export type QueryState = QueryResult & { lat: number; lng: number };
+import NearbyList from "./components/NearbyList";
+import type { AirportModel } from "./lib/airspace";
+import type { NearbyResult } from "./lib/nearby";
+import type { AirspaceZone, NoFlyZone } from "./lib/areas";
 
 export default function App() {
   const [airports, setAirports] = useState<AirportModel[]>([]);
   const [zones, setZones] = useState<NoFlyZone[]>([]);
+  const [airspace, setAirspace] = useState<AirspaceZone[]>([]);
   const [loadState, setLoadState] = useState({ airports: false, zones: false });
-  const [query, setQuery] = useState<QueryState | null>(null);
+  const [query, setQuery] = useState<NearbyResult | null>(null);
+  const [queryLoading, setQueryLoading] = useState(false);
   const [toggles, setToggles] = useState<Toggles>({
     airports: true,
     rings: true,
@@ -53,23 +54,31 @@ export default function App() {
       <DroneMap
         airports={airports}
         zones={zones}
+        airspace={airspace}
         toggles={toggles}
         loadState={loadState}
         onAirports={setAirports}
         onZones={setZones}
+        onAirspace={setAirspace}
         onQuery={setQuery}
+        onQueryLoading={setQueryLoading}
         onLoadState={(s) => setLoadState((l) => ({ ...l, ...s }))}
       />
 
       <aside className="layers-panel">
         <h3>Layers</h3>
         <ToggleRow label="Airport markers" k="airports" checked={toggles.airports} onChange={toggle} count={airports.length} />
-        <ToggleRow label="Controlled airspace" k="rings" checked={toggles.rings} onChange={toggle} count={airports.length} />
-        <ToggleRow label="No-fly zones" k="zones" checked={toggles.zones} onChange={toggle} count={zones.length} />
+        <ToggleRow label="Controlled airspace" k="rings" checked={toggles.rings} onChange={toggle} count={airspace.length} />
+        <ToggleRow label="Parks / restricted" k="zones" checked={toggles.zones} onChange={toggle} count={zones.length} />
         <div className="panel-hint">
           <p>
-            Zoom into a region (≥ zoom 6) to load <strong>live airport &amp; protected-area data</strong>{" "}
-            from OpenStreetMap.
+            <strong>Click anywhere</strong> on the map to list the airspace, UAS Facility
+            Map ceiling, fixed flyer sites, airports and parks that apply to that spot.
+          </p>
+          <p>
+            Zoom in (≥ zoom 8) to load <strong>live FAA &amp; NPS data</strong> for the
+            visible area — airports, controlled-airspace polygons and protected or
+            restricted areas.
           </p>
           <button className="ghost" onClick={clearQuery}>
             Clear pin
@@ -77,7 +86,23 @@ export default function App() {
         </div>
       </aside>
 
-      {query && <StatusCard query={query} onClose={() => setQuery(null)} />}
+      {query && (
+        <NearbyList
+          result={query}
+          loading={queryLoading}
+          onClose={() => setQuery(null)}
+          onRefresh={() =>
+            window.dispatchEvent(
+              new CustomEvent("drone-requery", {
+                detail: { lat: query.lat, lng: query.lng },
+              }),
+            )
+          }
+          onFlyTo={(lat, lng, zoom) =>
+            window.dispatchEvent(new CustomEvent("drone-flyto", { detail: { lat, lng, zoom } }))
+          }
+        />
+      )}
 
       <div className="scale-note">
         Footprints are approximations for planning. Always verify with FAADroneZone / B4UFLY before flight.

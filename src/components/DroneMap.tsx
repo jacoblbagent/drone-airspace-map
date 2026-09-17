@@ -1,10 +1,16 @@
 import { useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { dist, evaluateAirspace, nm, type AirportModel } from "../lib/airspace";
-import { fetchAirports, fetchNoFlyZones, type NoFlyZone } from "../lib/overpass";
+import { evaluateAirspace, dist, nm, type AirportModel } from "../lib/airspace";
+import {
+  fetchAirports,
+  fetchControlledAirspace,
+  fetchNoFlyZones,
+  type AirspaceZone,
+  type NoFlyZone,
+} from "../lib/areas";
 import { pointInZone } from "../lib/geo";
-import type { QueryResult } from "../lib/airspace";
+import { analyzePoint, type NearbyResult } from "../lib/nearby";
 
 // DEV-only introspection so automated tests can assert real loaded data.
 if (import.meta.env.DEV) {
@@ -14,6 +20,8 @@ if (import.meta.env.DEV) {
   w.__pip = pointInZone;
   w.__fetchAirports = fetchAirports;
   w.__fetchNoFlyZones = fetchNoFlyZones;
+  w.__fetchControlledAirspace = fetchControlledAirspace;
+  w.__analyzePoint = analyzePoint;
 }
 
 export interface Toggles {
@@ -30,11 +38,14 @@ export interface LoadState {
 interface Props {
   airports: AirportModel[];
   zones: NoFlyZone[];
+  airspace: AirspaceZone[];
   toggles: Toggles;
   loadState: LoadState;
   onAirports: (a: AirportModel[]) => void;
   onZones: (z: NoFlyZone[]) => void;
-  onQuery: (q: (QueryResult & { lat: number; lng: number }) | null) => void;
+  onAirspace: (a: AirspaceZone[]) => void;
+  onQuery: (q: NearbyResult | null) => void;
+  onQueryLoading: (loading: boolean) => void;
   onLoadState: (s: Partial<LoadState>) => void;
 }
 
@@ -69,17 +80,22 @@ function airportIcon(ap: AirportModel, dim: boolean) {
 export default function DroneMap({
   airports,
   zones,
+  airspace,
   toggles,
   loadState,
   onAirports,
   onZones,
+  onAirspace,
   onQuery,
+  onQueryLoading,
   onLoadState,
 }: Props) {
   const mapDiv = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const airportsRef = useRef<AirportModel[]>([]);
   const zonesRef = useRef<NoFlyZone[]>([]);
+  /** Monotonic id so a slow response can't overwrite a newer click's result. */
+  const querySeq = useRef(0);
 
   const airportsLayer = useRef<L.LayerGroup>(L.layerGroup());
   const ringsLayer = useRef<L.LayerGroup>(L.layerGroup());
@@ -112,6 +128,9 @@ export default function DroneMap({
       worldCopyJump: true,
     });
     mapRef.current = map;
+    if (import.meta.env.DEV) {
+      (window as unknown as Record<string, unknown>).__map = map;
+    }
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 17,
       subdomains: "abc",
@@ -125,9 +144,9 @@ export default function DroneMap({
     zonesLayer.current.addTo(map);
     queryLayer.current.addTo(map);
 
-    // Click-to-query: evaluate airspace at the chosen point.
-    map.on("click", (e: L.LeafletMouseEvent) => {
-      const { lat, lng } = e.latlng;
+    // Click-to-query: fan out to the live FAA layers and list what's relevant.
+    const runQuery = (lat: number, lng: number) => {
+      const seq = ++querySeq.current;
       queryLayer.current.clearLayers();
       L.marker([lat, lng], {
         icon: L.divIcon({
@@ -139,28 +158,49 @@ export default function DroneMap({
         interactive: false,
       }).addTo(queryLayer.current);
 
-      const aps = airportsRef.current;
-      let nearest: AirportModel | null = null;
-      let nearestDist = Infinity;
-      for (const a of aps) {
-        const d = dist(a.lat, a.lng, lat, lng);
-        if (d < nearestDist) {
-          nearestDist = d;
-          nearest = a;
-        }
-      }
-      const hit = zonesRef.current.find((z) => pointInZone(lat, lng, z.geometry));
-      const result = evaluateAirspace({
-        lat,
-        lng,
-        airports: aps,
-        nearestDistance: nearestDist,
-        nearest,
-        inNoFlyZone: !!hit,
-        noFlyZoneName: hit?.name,
-      });
-      onQuery({ ...result, lat, lng });
-    });
+      onQueryLoading(true);
+      analyzePoint({ lat, lng, zones: zonesRef.current })
+        .then((res) => {
+          if (seq !== querySeq.current) return; // stale click, drop it
+          onQuery(res);
+          // Drop a small dot on each result that has a location, so the list
+          // and the map stay linked. Marker failures must never take down the
+          // results panel, so this is isolated + guarded.
+          try {
+            for (const it of res.items) {
+              const t = it.flyTo;
+              if (!t || !isFinite(t.lat) || !isFinite(t.lng)) continue;
+              L.marker([t.lat, t.lng], {
+                icon: L.divIcon({
+                  className: "",
+                  html: `<div class="rel-dot sev-${it.severity}"></div>`,
+                  iconSize: [10, 10],
+                  iconAnchor: [5, 5],
+                }),
+              })
+                .bindTooltip(it.title, { direction: "top", offset: [0, -6] })
+                .addTo(queryLayer.current);
+            }
+          } catch (err) {
+            console.warn("result markers failed", err);
+          }
+        })
+        .catch((e) => {
+          if (import.meta.env.DEV) console.warn("airspace query failed", e);
+          if (seq === querySeq.current) onQuery(null);
+        })
+        .finally(() => {
+          if (seq === querySeq.current) onQueryLoading(false);
+        });
+    };
+
+    map.on("click", (e: L.LeafletMouseEvent) => runQuery(e.latlng.lat, e.latlng.lng));
+    // Re-run for the same point (panel "refresh" action).
+    const onRequery = (e: Event) => {
+      const d = (e as CustomEvent).detail as { lat: number; lng: number };
+      runQuery(d.lat, d.lng);
+    };
+    window.addEventListener("drone-requery", onRequery);
 
     // Load live data for the area around the viewport center, throttled.
     // The query box is clamped so a single Overpass request stays bounded,
@@ -171,13 +211,13 @@ export default function DroneMap({
       if (size.x === 0 || size.y === 0 || !map.getContainer().isConnected) return;
       const zoom = map.getZoom();
       if (zoom < MIN_LOAD_ZOOM) return;
-      const c = map.getCenter();
-      // Center-stable, bounded window around the map centre.
-      const pad = 1.5;
-      const south = Math.max(-85, c.lat - pad);
-      const north = Math.min(85, c.lat + pad);
-      const west = c.lng - pad * 1.5;
-      const east = c.lng + pad * 1.5;
+      // Query the real viewport (padded) so the layers always match what is
+      // on screen. The FAA services are cheap, so no artificial window.
+      const b = map.getBounds().pad(0.2);
+      const south = Math.max(-85, b.getSouth());
+      const north = Math.min(85, b.getNorth());
+      const west = b.getWest();
+      const east = b.getEast();
 
       onLoadState({ airports: true });
       fetchAirports(south, west, north, east)
@@ -186,9 +226,12 @@ export default function DroneMap({
           onLoadState({ airports: false });
         })
         .catch(() => onLoadState({ airports: false }));
+      onAirspace([]);
+      fetchControlledAirspace(south, west, north, east)
+        .then(onAirspace)
+        .catch(() => onAirspace([]));
       if (toggles.zones) {
-        // Stagger the zones request so the two heavy Overpass queries don't
-        // collide and trip rate limiting.
+        // Staggered so both services aren't hit in the same tick.
         setTimeout(() => {
           onLoadState({ zones: true });
           fetchNoFlyZones(south, west, north, east)
@@ -197,7 +240,7 @@ export default function DroneMap({
               onLoadState({ zones: false });
             })
             .catch(() => onLoadState({ zones: false }));
-        }, 900);
+        }, 600);
       }
     };
     const debounced = () => {
@@ -217,15 +260,23 @@ export default function DroneMap({
       }
       setTimeout(loadRegion, 500);
     };
+    const onFlyTo = (e: Event) => {
+      const d = (e as CustomEvent).detail as { lat: number; lng: number; zoom?: number };
+      map.setView([d.lat, d.lng], d.zoom ?? 12);
+      setTimeout(loadRegion, 500);
+    };
     const onClear = () => {
       queryLayer.current.clearLayers();
       onQuery(null);
     };
     window.addEventListener("drone-pan", onPan);
+    window.addEventListener("drone-flyto", onFlyTo);
     window.addEventListener("drone-clear-query", onClear);
 
     return () => {
       window.removeEventListener("drone-pan", onPan);
+      window.removeEventListener("drone-flyto", onFlyTo);
+      window.removeEventListener("drone-requery", onRequery);
       window.removeEventListener("drone-clear-query", onClear);
       if (timer) clearTimeout(timer);
       map.remove();
@@ -256,26 +307,27 @@ export default function DroneMap({
     }
   }, [airports, toggles.airports]);
 
-  // ---- Control rings --------------------------------------------------------
+  // ---- Controlled airspace (real FAA Class B/C/D/E-surface polygons) --------
   useEffect(() => {
     const layer = ringsLayer.current;
     layer.clearLayers();
     if (!toggles.rings) return;
-    for (const a of airports) {
-      if (a.controlRadius <= 0) continue;
-      const r = L.circle([a.lat, a.lng], {
-        radius: a.controlRadius,
-        color: RING_COLOR[a.airspaceClass] || "#64748b",
-        weight: 1.5,
-        fillColor: RING_COLOR[a.airspaceClass] || "#64748b",
-        fillOpacity: a.restricted ? 0.28 : 0.12,
-      });
-      r.bindPopup(
-        `<h4>${escapeHtml(a.name)}</h4><p>Class ${a.airspaceClass} zone · ceiling ${a.ceiling} ft · shadow approx.</p>`,
+    for (const z of airspace) {
+      const ringsGeo = z.geometry.map((ring) =>
+        ring.map(([lat, lng]) => [lng, lat] as [number, number]),
       );
-      r.addTo(layer);
+      L.polygon(ringsGeo, {
+        color: RING_COLOR[z.cls] || "#64748b",
+        weight: 1.5,
+        fillColor: RING_COLOR[z.cls] || "#64748b",
+        fillOpacity: 0.12,
+      })
+        .bindPopup(
+          `<h4>${escapeHtml(z.name)}</h4><p>Class ${z.cls} · ${escapeHtml(z.floor || "?")} → ${escapeHtml(z.ceiling || "?")}${z.ident ? ` · ${escapeHtml(z.ident)}` : ""}</p>`,
+        )
+        .addTo(layer);
     }
-  }, [airports, toggles.rings]);
+  }, [airspace, toggles.rings]);
 
   // ---- No-fly zones ---------------------------------------------------------
   useEffect(() => {
@@ -294,14 +346,11 @@ export default function DroneMap({
         dashArray: "4 4",
       })
         .bindPopup(
-          `<h4>${escapeHtml(z.name)}</h4><p>${z.kind === "park" ? "National park / protected area — drones not permitted" : "Restricted area — drones not permitted"}</p>`,
+          `<h4>${escapeHtml(z.name)}</h4><p>${z.kind === "park" ? "National Park Service land — launching, landing and operating drones is prohibited" : "Prohibited / restricted / national-security airspace — sUAS operations require authorization"}</p>`,
         )
         .addTo(layer);
     }
   }, [zones, toggles.zones]);
-
-  // ---- Search ---------------------------------------------------------------
-  // Search box rendered outside map; handled via App. Map stays leaflet here.
 
   return (
     <div className="map-wrap">
