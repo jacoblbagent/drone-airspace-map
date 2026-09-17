@@ -91,6 +91,9 @@ label {
      must be allowed to shrink. */
   min-width: 0;
   max-width: 420px;
+  /* The legend used to hold the right end of the bar; with it gone the search
+     takes that spot so the header stays balanced instead of leaving a gap. */
+  margin-left: auto;
 
   input {
     flex: 1;
@@ -118,26 +121,6 @@ label {
     cursor: pointer;
     &:disabled {
       opacity: 0.5;
-    }
-  }
-}
-
-.legend {
-  display: flex;
-  gap: 14px;
-  margin-left: auto;
-  .legend-item {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 11px;
-    color: $muted;
-    white-space: nowrap;
-    i {
-      width: 12px;
-      height: 12px;
-      border-radius: 3px;
-      display: inline-block;
     }
   }
 }
@@ -998,9 +981,6 @@ $sev-ok: #22c55e;
 // full width, and it leaves a strip of map visible above it while the list
 // scrolls internally.
 @media (max-width: 900px) {
-  .legend {
-    display: none;
-  }
   .topbar {
     gap: 10px;
     padding: 0 10px;

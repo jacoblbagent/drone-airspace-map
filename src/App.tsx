@@ -99,12 +99,6 @@ export default function App() {
           <input name="q" placeholder="Search a city, park, or airport…" />
           <button disabled={geocoding}>{geocoding ? "…" : "Go"}</button>
         </form>
-
-        <div className="legend">
-          <LegendItem color="#22c55e" label="Fly — Class G, no auth (400 ft)" />
-          <LegendItem color="#facc15" label="Controlled — LAANC auth req'd" />
-          <LegendItem color="#ef4444" label="National park / no-fly" />
-        </div>
       </header>
 
       <DroneMap
@@ -318,14 +312,5 @@ function ToggleRow({
       <span>{label}</span>
       {count > 0 && <span className="count">{count}</span>}
     </label>
-  );
-}
-
-function LegendItem({ color, label }: { color: string; label: string }) {
-  return (
-    <span className="legend-item">
-      <i style={{ background: color }} />
-      {label}
-    </span>
   );
 }
