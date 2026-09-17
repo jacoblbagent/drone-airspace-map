@@ -685,11 +685,14 @@ $sev-ok: #22c55e;
 .leaflet-control-zoom a:hover {
   background: $panel-2;
 }
-.leaflet-control-attribution {
+.leaflet-container .leaflet-control-attribution {
   background: rgba(12, 17, 23, 0.7) !important;
   color: $muted;
-  a {
+  /* Out-specify Leaflet's own `.leaflet-container a` default link colour. */
+  a,
+  a:hover {
     color: $muted;
+    text-decoration: underline;
   }
 }
 
