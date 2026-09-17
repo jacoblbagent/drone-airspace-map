@@ -40,6 +40,7 @@ export default function NearbyList({ result, loading, onClose, onRefresh, onFlyT
 
   return (
     <aside className={`nearby-panel ${meta.cls}`} onClick={(e) => e.stopPropagation()}>
+      <div className="nv-grab" aria-hidden="true" />
       <header className="nv-top">
         <div className="nv-coords">
           <span>{result.lat.toFixed(4)}, {result.lng.toFixed(4)}</span>
@@ -93,9 +94,14 @@ export default function NearbyList({ result, loading, onClose, onRefresh, onFlyT
       )}
 
       <footer className="nv-foot">
-        Live FAA UAS Facility Map, Class &amp; Special Use Airspace, ADHP airports, fixed
-        flyer sites and NPS boundaries. Planning aid only — verify with B4UFLY / DroneZone
-        before flight.
+        <span className="nv-disclaimer">
+          Live FAA UAS Facility Map, Class &amp; Special Use Airspace, ADHP airports, fixed
+          flyer sites and NPS boundaries. Planning aid only — verify with B4UFLY / DroneZone
+          before flight.
+        </span>
+        <span className="nv-credit">
+          Basemap © OpenStreetMap contributors · Leaflet
+        </span>
       </footer>
     </aside>
   );

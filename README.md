@@ -38,6 +38,25 @@ Service data for that exact spot, then lists everything relevant to it.
 - **Collapsible Layers panel** — collapse it to a small pill so it stops covering the map; the
   open/collapsed state is remembered between visits.
 
+## Mobile
+
+The layout is built for touch on phones and tablets, not just shrunk from desktop:
+
+- **Results arrive as a bottom sheet** (≤900px) — full width, thumb-reachable, grab handle, and
+  the list scrolls internally so the page itself never scrolls. The map pans automatically so the
+  pin stays visible in the strip above the sheet.
+- **The two panels are mutually exclusive** on sheet layouts: new results tuck the Layers panel
+  away, and opening Layers dismisses the results. They would otherwise overlap, with the sheet
+  covering the lower layer rows so they couldn't be tapped.
+- **Touch targets** — rows ≥56px, icon buttons / layer rows / buttons ≥44px, checkboxes 20px inside
+  a 44px row, and 38px map zoom buttons moved to the top-right so they clear the layers panel.
+- **16px inputs** on every coarse-pointer device, which stops iOS Safari zooming the page when the
+  search field is focused.
+- **Safe areas** — the topbar, sheet, and layers panel respect `env(safe-area-inset-*)`, and the
+  layout uses `100dvh` so mobile browser chrome showing/hiding doesn't clip it.
+- **Attribution** — the sheet sits above Leaflet's attribution control, so the basemap credit is
+  repeated in the sheet footer to keep it visible.
+
 ## Data sources (all live, all authoritative, no API key)
 
 | Data | Source |
@@ -93,6 +112,9 @@ npm run dev        # http://localhost:5177
 
 - Layers load once you're zoomed to **zoom 8+**, for the padded visible viewport, so the data
   always matches what's on screen.
+- Breakpoints: ≥901px floating desktop card · 701–900px tablet sheet (capped at 620px) ·
+  ≤700px phone sheet · short landscape (≤520px tall) keeps the sheet at 62dvh so a usable strip
+  of map survives.
 - **Control radius** circles come from the field's type (international → 5 nm, regional → 4 nm,
   towered/ICAO → 2.5 nm, small field → 1.5 nm, heliport/uncontrolled → none). They are planning
   approximations, labelled as such — the **Class airspace** layer is the authoritative source.

@@ -21,23 +21,40 @@ export default function App() {
   const [geocoding, setGeocoding] = useState(false);
   const [layersOpen, setLayersOpen] = useState(() => {
     try {
-      return localStorage.getItem("droneairspace.layers.open") !== "0";
+      const stored = localStorage.getItem("droneairspace.layers.open");
+      if (stored !== null) return stored !== "0";
     } catch {
-      return true;
+      /* storage unavailable */
     }
+    // No stored preference: start collapsed on compact screens (phones, and
+    // phones on their side) so the panel doesn't cover the map or sit behind
+    // the results sheet; expanded on anything with room for it.
+    if (typeof window === "undefined") return true;
+    return window.innerWidth > 700 && window.innerHeight > 560;
   });
 
   const toggle = (k: keyof Toggles) => setToggles((t) => ({ ...t, [k]: !t[k] }));
-  const toggleLayers = () =>
-    setLayersOpen((open) => {
-      const next = !open;
-      try {
-        localStorage.setItem("droneairspace.layers.open", next ? "1" : "0");
-      } catch {
-        /* non-fatal */
-      }
-      return next;
-    });
+
+  /**
+   * Collapse/expand the layers panel.
+   *
+   * On sheet layouts (≤900px) the two panels would occupy the same space, and
+   * the results sheet sits above the layers panel — which made the lower layer
+   * rows untappable. So on those widths the two are mutually exclusive:
+   * opening Layers dismisses the results (the pin stays on the map).
+   */
+  function toggleLayers() {
+    const next = !layersOpen;
+    if (next && typeof window !== "undefined" && window.innerWidth <= 900) {
+      setQuery(null);
+    }
+    setLayersOpen(next);
+    try {
+      localStorage.setItem("droneairspace.layers.open", next ? "1" : "0");
+    } catch {
+      /* non-fatal */
+    }
+  }
 
   return (
     <div className="app">
@@ -78,7 +95,14 @@ export default function App() {
         onAirports={setAirports}
         onZones={setZones}
         onAirspace={setAirspace}
-        onQuery={setQuery}
+        onQuery={(r) => {
+          setQuery(r);
+          // On sheet layouts (≤900px) the results panel and the layers panel
+          // would fight for the same space, so new results tuck the layers
+          // panel away. Not persisted — it's a layout response, not a
+          // preference.
+          if (r && window.innerWidth <= 900) setLayersOpen(false);
+        }}
         onQueryLoading={setQueryLoading}
         onLoadState={(s) => setLoadState((l) => ({ ...l, ...s }))}
       />

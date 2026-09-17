@@ -137,6 +137,10 @@ export default function DroneMap({
   // ---- Init map once ------------------------------------------------------
   useEffect(() => {
     if (!mapDiv.current || mapRef.current) return;
+    // On every width that uses the bottom-sheet layout the zoom control needs
+    // to be opposite the layers panel (top-left); short landscapes need it too.
+    const narrow =
+      window.innerWidth <= 900 || window.innerHeight <= 560;
     const map = L.map(mapDiv.current, {
       center: [39.5, -98.5],
       zoom: 5,
@@ -144,7 +148,10 @@ export default function DroneMap({
       minZoom: 4,
       maxZoom: 17,
       worldCopyJump: true,
+      // Added manually below so it can sit opposite the layers panel.
+      zoomControl: false,
     });
+    L.control.zoom({ position: narrow ? "topright" : "topleft" }).addTo(map);
     mapRef.current = map;
     if (import.meta.env.DEV) {
       (window as unknown as Record<string, unknown>).__map = map;
@@ -212,6 +219,29 @@ export default function DroneMap({
             }
           } catch (err) {
             console.warn("result markers failed", err);
+          }
+          // On tablet/phone widths the results arrive as a bottom sheet
+          // covering most of the map, so pan the view until the pin sits in
+          // the strip of map still visible above it. Measured from the rendered
+          // sheet rather than assumed, so it survives CSS changes.
+          if (window.innerWidth <= 900) {
+            window.setTimeout(() => {
+              const m = mapRef.current;
+              if (!m) return;
+              const sheet = document.querySelector(".nearby-panel");
+              const vh = window.innerHeight;
+              const sheetH = sheet
+                ? sheet.getBoundingClientRect().height
+                : vh * 0.78;
+              const mapTop = m.getContainer().getBoundingClientRect().top;
+              const strip = Math.max(70, vh - sheetH - mapTop);
+              const want = Math.round(strip * 0.45);
+              const have = m.latLngToContainerPoint([lat, lng]).y;
+              const dy = have - want;
+              if (Math.abs(dy) > 12) {
+                m.panBy([0, dy], { animate: true, duration: 0.3 });
+              }
+            }, 150);
           }
         })
         .catch((e) => {
