@@ -100,6 +100,20 @@ export default function DroneMap({
   /** Monotonic id so a slow response can't overwrite a newer click's result. */
   const querySeq = useRef(0);
 
+  /** Set in the init effect; lets overlay clicks run the same query. */
+  const runQueryRef = useRef<((lat: number, lng: number) => void) | null>(null);
+
+  /**
+   * Overlay click handler. Leaflet paths/markers with a popup swallow the map
+   * click, so without this a click on a radius circle, an airspace polygon or
+   * an airport marker would open a popup and never open the results list —
+   * which is exactly where users click most (near an airport).
+   */
+  const queryOnClick = (e: L.LeafletMouseEvent) => {
+    const t = e.latlng;
+    if (t) runQueryRef.current?.(t.lat, t.lng);
+  };
+
   const airportsLayer = useRef<L.LayerGroup>(L.layerGroup());
   const radiusLayer = useRef<L.LayerGroup>(L.layerGroup());
   const ringsLayer = useRef<L.LayerGroup>(L.layerGroup());
@@ -150,7 +164,16 @@ export default function DroneMap({
     queryLayer.current.addTo(map);
 
     // Click-to-query: fan out to the live FAA layers and list what's relevant.
+    let lastKey = "";
+    let lastAt = 0;
     const runQuery = (lat: number, lng: number) => {
+      // An overlay click can also reach the map, so drop the echo.
+      const key = `${lat.toFixed(5)},${lng.toFixed(5)}`;
+      const now = Date.now();
+      if (key === lastKey && now - lastAt < 600) return;
+      lastKey = key;
+      lastAt = now;
+
       const seq = ++querySeq.current;
       queryLayer.current.clearLayers();
       L.marker([lat, lng], {
@@ -184,6 +207,7 @@ export default function DroneMap({
                 }),
               })
                 .bindTooltip(it.title, { direction: "top", offset: [0, -6] })
+                .on("click", queryOnClick)
                 .addTo(queryLayer.current);
             }
           } catch (err) {
@@ -200,6 +224,7 @@ export default function DroneMap({
     };
 
     map.on("click", (e: L.LeafletMouseEvent) => runQuery(e.latlng.lat, e.latlng.lng));
+    runQueryRef.current = runQuery;
     // Re-run for the same point (panel "refresh" action).
     const onRequery = (e: Event) => {
       const d = (e as CustomEvent).detail as { lat: number; lng: number };
@@ -308,6 +333,7 @@ export default function DroneMap({
           <p class="pop-note">${a.restricted ? "Military / special-use — no sUAS without authorization." : "Controlled footprint approximated from airport type for planning."}</p>
         </div>`,
       );
+      mk.on("click", queryOnClick);
       mk.addTo(layer);
     }
   }, [airports, toggles.airports]);
@@ -323,6 +349,9 @@ export default function DroneMap({
     for (const a of airports) {
       if (a.controlRadius <= 0) continue;
       const colour = RING_COLOR[a.airspaceClass] || "#64748b";
+      // Non-interactive: a radius circle covers a whole airport area, so an
+      // interactive one would eat every click near a field. Clicking through
+      // runs the airspace query, which reports the field in the results list.
       L.circle([a.lat, a.lng], {
         radius: a.controlRadius,
         color: colour,
@@ -330,13 +359,8 @@ export default function DroneMap({
         dashArray: "3 5",
         fillColor: colour,
         fillOpacity: a.restricted ? 0.2 : 0.07,
-      })
-        .bindPopup(
-          `<h4>${escapeHtml(a.name)}</h4>
-           <p>Approx. control radius <strong>${nm(a.controlRadius)} nm</strong> · Class ${a.airspaceClass} · ceiling ${a.ceiling} ft AGL</p>
-           <p class="pop-note">Approximated from the field's type for planning. Switch on the Class airspace layer for the published FAA boundaries.</p>`,
-        )
-        .addTo(layer);
+        interactive: false,
+      }).addTo(layer);
     }
   }, [airports, toggles.radius]);
 
@@ -354,11 +378,9 @@ export default function DroneMap({
         weight: 1.5,
         fillColor: RING_COLOR[z.cls] || "#64748b",
         fillOpacity: 0.12,
-      })
-        .bindPopup(
-          `<h4>${escapeHtml(z.name)}</h4><p>Class ${z.cls} · ${escapeHtml(z.floor || "?")} → ${escapeHtml(z.ceiling || "?")}${z.ident ? ` · ${escapeHtml(z.ident)}` : ""}</p>`,
-        )
-        .addTo(layer);
+        // See the radius layer: never eat clicks over a published boundary.
+        interactive: false,
+      }).addTo(layer);
     }
   }, [airspace, toggles.rings]);
 
@@ -381,6 +403,7 @@ export default function DroneMap({
         .bindPopup(
           `<h4>${escapeHtml(z.name)}</h4><p>${z.kind === "park" ? "National Park Service land — launching, landing and operating drones is prohibited" : "Prohibited / restricted / national-security airspace — sUAS operations require authorization"}</p>`,
         )
+        .on("click", queryOnClick)
         .addTo(layer);
     }
   }, [zones, toggles.zones]);

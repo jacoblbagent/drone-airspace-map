@@ -21,7 +21,7 @@ import {
 } from "./faa";
 import type { NoFlyZone } from "./areas";
 import { pointInZone } from "./geo";
-import { ALT, type FlyStatus } from "./airspace";
+import { ALT, modelAirport, type FlyStatus } from "./airspace";
 
 export type Severity = "ok" | "info" | "caution" | "danger";
 
@@ -318,6 +318,12 @@ export async function analyzePoint({ lat, lng, zones }: AnalyzeInput): Promise<N
   // ---- 6. Airports & heliports -------------------------------------------
   for (const a of airports) {
     const typeLabel = AIRPORT_TYPE[a.type] || a.type || "Airport";
+    // Same planning estimate the control-radius circle on the map uses.
+    const est = modelAirport(a.name, a.lat, a.lng, {
+      icao: a.icao,
+      "aerodrome:type": a.type === "HP" ? "heliport" : undefined,
+      military: a.military ? "airport" : undefined,
+    });
     items.push({
       id: `ap-${a.ident}-${a.name}`,
       kind: "airport",
@@ -346,6 +352,11 @@ export async function analyzePoint({ lat, lng, zones }: AnalyzeInput): Promise<N
               "and never operate over the field without the operator's consent."
             : "Public-use field. Watch for low-level traffic, and check the airspace entry " +
               "above before flying nearby.",
+        est.controlRadius > 0
+          ? `Class ${est.airspaceClass} · approx. control radius ${
+              Math.round((est.controlRadius / 1852) * 10) / 10
+            } nm (planning estimate from the field's type).`
+          : "No controlled-airspace footprint is inferred for this field.",
         "Distance is measured from your selected point to the airport reference point.",
       ],
       flyTo: flyTo(a.lat, a.lng, 12),
