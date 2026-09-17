@@ -23,7 +23,7 @@ export const ALT: Record<string, number> = {
 };
 
 export type AirspaceClass = "B" | "C" | "D" | "E" | "G";
-export type FlyStatus = "fly" | "authorization" | "no_fly";
+export type FlyStatus = "fly" | "authorization" | "no_fly" | "unknown";
 
 export interface AirportModel {
   name: string;

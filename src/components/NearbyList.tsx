@@ -21,6 +21,12 @@ const STATUS_META: Record<FlyStatus, { label: string; icon: string; cls: string;
     cls: "status-nofly",
     title: "Operation not permitted here",
   },
+  unknown: {
+    label: "Couldn't Determine",
+    icon: "⚪",
+    cls: "status-unknown",
+    title: "Live FAA data did not load — retry before relying on this",
+  },
 };
 
 interface Props {
@@ -63,8 +69,17 @@ export default function NearbyList({ result, loading, onClose, onRefresh, onFlyT
           <div className="nv-verdict-title">{title}</div>
         </div>
         <div className="nv-verdict-alt">
-          <span className="nv-alt-big">{result.ceiling.toLocaleString()} ft</span>
-          <span className="nv-alt-sub">max AGL · Part 107</span>
+          {result.status === "unknown" ? (
+            <>
+              <span className="nv-alt-big">—</span>
+              <span className="nv-alt-sub">altitude unknown · retry</span>
+            </>
+          ) : (
+            <>
+              <span className="nv-alt-big">{result.ceiling.toLocaleString()} ft</span>
+              <span className="nv-alt-sub">max AGL · Part 107</span>
+            </>
+          )}
         </div>
       </div>
 
@@ -88,8 +103,23 @@ export default function NearbyList({ result, loading, onClose, onRefresh, onFlyT
 
       {result.errors.length > 0 && (
         <p className="nv-errors">
-          Some FAA data did not load ({result.errors.length}) — the result above may be
-          incomplete. Use the refresh button to retry.
+          {result.rateLimited ? (
+            <>
+              <strong>The FAA data service is rate-limiting this browser.</strong>{" "}
+              {result.errors.join(", ")} didn&apos;t load — it asks clients to slow down
+              when a lot of lookups land at once. Wait a few seconds, then retry with ↻.
+            </>
+          ) : (
+            <>
+              <strong>
+                {result.errors.length === 1
+                  ? "One live data source didn't load:"
+                  : `${result.errors.length} live data sources didn't load:`}
+              </strong>{" "}
+              {result.errors.join(", ")}. The list above may be incomplete — these services
+              occasionally drop a request, so try the ↻ refresh button.
+            </>
+          )}
         </p>
       )}
 

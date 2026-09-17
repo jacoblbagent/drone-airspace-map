@@ -605,6 +605,9 @@ $sev-ok: #22c55e;
   &.status-nofly {
     border-top: 3px solid $sev-danger;
   }
+  &.status-unknown {
+    border-top: 3px solid $muted;
+  }
 }
 
 // Sheet grab-handle affordance — only shown when the panel is a bottom sheet.
@@ -878,6 +881,11 @@ $sev-ok: #22c55e;
   color: #fbbf24;
   border-top: 1px solid $border;
   flex-shrink: 0;
+  line-height: 1.5;
+
+  strong {
+    color: #fde68a;
+  }
 }
 
 .nv-foot {
@@ -1008,7 +1016,8 @@ $sev-ok: #22c55e;
 
     &.status-fly,
     &.status-authorization,
-    &.status-nofly {
+    &.status-nofly,
+    &.status-unknown {
       border-top-width: 3px;
     }
   }

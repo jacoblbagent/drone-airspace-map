@@ -17,6 +17,8 @@ import {
   getNearbyNpsUnits,
   getSecurityRestrictions,
   getSpecialUseAirspace,
+  isRateLimited,
+  setQueryBudget,
   type AirspaceRec,
 } from "./faa";
 import type { NoFlyZone } from "./areas";
@@ -65,7 +67,10 @@ export interface NearbyResult {
   /** Effective airspace class at the point. */
   airspaceClass: string;
   items: NearbyItem[];
+  /** Layer names that failed to load (verdict-relevant ones only). */
   errors: string[];
+  /** True when the FAA services rate-limited this browser. */
+  rateLimited: boolean;
 }
 
 const LAANC =
@@ -75,6 +80,8 @@ const FM_DOC =
 const NPS_DRONES = "https://www.nps.gov/subjects/drones/index.htm";
 const FIXED_SITES =
   "https://www.faa.gov/uas/recreational_flyers/where_can_i_fly";
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 const FIXED_SITE_BOILERPLATE =
   "Flight operations at a Recreational Flyer Fixed Site within controlled airspace must " +
@@ -112,26 +119,75 @@ interface AnalyzeInput {
 
 export async function analyzePoint({ lat, lng, zones }: AnalyzeInput): Promise<NearbyResult> {
   const errors: string[] = [];
+  let rateLimited = false;
+  /** Wall-clock budget for one click, so a rate-limited query still answers. */
+  const deadline = Date.now() + 7000;
+  setQueryBudget(deadline - Date.now());
   /** Layers whose failure changes the verdict — worth telling the user about. */
-  const CORE = new Set(["UAS Facility Map", "Class airspace", "NPS units", "Airports"]);
-  const safe = <T,>(p: Promise<T>, fallback: T, label: string): Promise<T> =>
-    p.catch((e: unknown) => {
-      if (CORE.has(label)) {
-        errors.push(`${label}: ${e instanceof Error ? e.message : String(e)}`);
-      } else if (import.meta.env.DEV) {
-        console.warn(`${label} lookup failed`, e);
+  const CORE = new Set([
+    "UAS Facility Map",
+    "Class airspace",
+    "NPS units",
+    // A failed special-use-airspace lookup can hide a prohibited area, so its
+    // failure must be reported rather than silently swallowed.
+    "Special use airspace",
+    "Airports",
+  ]);
+
+  const logFailure = (label: string, e: unknown) => {
+    const msg = e instanceof Error ? e.message : String(e);
+    // Always log the real reason for debugging; only the layer name is shown
+    // to the user (a raw service error message means nothing to a pilot).
+    console.warn(`${label} lookup failed: ${msg}`);
+  };
+
+  /**
+   * Stagger the fan-out, then give a failed layer one quiet second pass.
+   * Firing all seven queries in the same tick is what makes these hosts drop
+   * or throttle a request, so spreading them a few tens of ms apart keeps the
+   * burst polite (~0.5s on the whole result, hidden behind the loading card),
+   * and the second pass means a one-off drop never reaches the user.
+   * Verdict-critical layers fire first.
+   */
+  const safe = async <T,>(
+    label: string,
+    i: number,
+    fn: () => Promise<T>,
+    fallback: T,
+  ): Promise<T> => {
+    await sleep(i * 90 + Math.random() * 90);
+    try {
+      return await fn();
+    } catch (e) {
+      logFailure(label, e);
+      // The second pass is what rescues a one-off drop. It is skipped once the
+      // click has already spent its time budget, so a hard rate limit reports
+      // back in seconds instead of grinding through every layer.
+      if (Date.now() > deadline) {
+        if (CORE.has(label)) errors.push(label);
+        if (isRateLimited(e)) rateLimited = true;
+        return fallback;
       }
-      return fallback;
-    });
+      await sleep(1200);
+      try {
+        return await fn();
+      } catch (e2) {
+        logFailure(label, e2);
+        if (CORE.has(label)) errors.push(label);
+        if (isRateLimited(e2)) rateLimited = true;
+        return fallback;
+      }
+    }
+  };
 
   const [grid, airspaces, suas, security, fixedSites, airports, nps] = await Promise.all([
-    safe(getFacilityGrid(lat, lng), null, "UAS Facility Map"),
-    safe(getClassAirspace(lat, lng), [] as AirspaceRec[], "Class airspace"),
-    safe(getSpecialUseAirspace(lat, lng), [], "Special use airspace"),
-    safe(getSecurityRestrictions(lat, lng), [] as string[], "Security restrictions"),
-    safe(getNearbyFixedSites(lat, lng), [], "Fixed flyer sites"),
-    safe(getNearbyAirports(lat, lng), [], "Airports"),
-    safe(getNearbyNpsUnits(lat, lng), [], "NPS units"),
+    safe("UAS Facility Map", 0, () => getFacilityGrid(lat, lng), null),
+    safe("Class airspace", 1, () => getClassAirspace(lat, lng), [] as AirspaceRec[]),
+    safe("Special use airspace", 2, () => getSpecialUseAirspace(lat, lng), []),
+    safe("Security restrictions", 3, () => getSecurityRestrictions(lat, lng), [] as string[]),
+    safe("Fixed flyer sites", 4, () => getNearbyFixedSites(lat, lng), []),
+    safe("Airports", 5, () => getNearbyAirports(lat, lng), []),
+    safe("NPS units", 6, () => getNearbyNpsUnits(lat, lng), []),
   ]);
 
   const items: NearbyItem[] = [];
@@ -465,12 +521,30 @@ export async function analyzePoint({ lat, lng, zones }: AnalyzeInput): Promise<N
     status = "authorization";
   }
 
+  /**
+   * A green "Fly OK" is a claim about airspace we could not read. If a layer
+   * that decides the verdict failed, say so instead of reassuring the pilot —
+   * the strictest reading of whatever did load is still shown, but a clean
+   * "fly" is only reported when the evidence is actually complete.
+   */
+  const verdictCritical = errors.filter((e) =>
+    ["UAS Facility Map", "Class airspace", "NPS units", "Special use airspace"].includes(e),
+  );
+  if (status === "fly" && verdictCritical.length) {
+    status = "unknown";
+    statusTitle = `Could not load ${verdictCritical.join(", ")} — this point may be controlled airspace. Retry before flying.`;
+  }
+
+  // 400 ft is only claimed when the Facility Map actually loaded: an "unknown"
+  // verdict with no grid data must not quietly promise the Class G ceiling.
   const ceiling =
     status === "no_fly"
       ? ALT.NO_FLY
       : grid && grid.inside
         ? Math.max(0, grid.ceiling)
-        : ALT.DEFAULT_G;
+        : status === "unknown"
+          ? ALT.NO_FLY
+          : ALT.DEFAULT_G;
 
   const airspaceClass = insideNps || insideZone
     ? "G"
@@ -514,6 +588,7 @@ export async function analyzePoint({ lat, lng, zones }: AnalyzeInput): Promise<N
     airspaceClass,
     items: [...head, ...rest],
     errors,
+    rateLimited,
   };
 }
 

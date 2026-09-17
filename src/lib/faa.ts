@@ -21,6 +21,102 @@ const NPS_SVC = "NPS_Land_Resources_Division_Boundary_and_Tract_Data_Service";
 const NPS_LAYER = 2;
 
 const TIMEOUT = 20_000;
+/** Attempts per layer. A click fans out to 7 layers at once, and the ArcGIS
+ *  hosts drop or throttle the odd request under that burst — one retry proved
+ *  too few, so allow two. */
+const ATTEMPTS = 3;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Transient failures are worth another try; a rejected query is not. */
+class QueryRejected extends Error {}
+
+/** Rate limiting, surfaced separately so the UI can say so plainly. */
+class Throttled extends Error {}
+
+/** True when a failure was the service asking us to slow down. */
+export function isRateLimited(e: unknown): boolean {
+  return e instanceof Throttled;
+}
+
+/**
+ * ArcGIS rate limiting does NOT come back as a 429 — it is a 200 whose body is
+ * `{"error":{"message":"Unable to perform query. Too many requests."}}`. Treat
+ * that as a throttle, never as a rejected query, or the app gives up instantly
+ * and reports "data did not load" while the API is merely asking us to slow
+ * down.
+ */
+const THROTTLE_RE = /too many requests|rate limit|throttl|exceeded/i;
+
+function isThrottleMessage(msg: string): boolean {
+  return THROTTLE_RE.test(msg);
+}
+
+/**
+ * Shared cooldown: the rate limit is per client, so when one layer is told to
+ * slow down every other layer must wait too — otherwise the remaining six
+ * requests of the same burst walk straight into the same wall.
+ */
+let cooldownUntil = 0;
+
+/**
+ * Wall-clock budget for the current click, set by the caller. Once it is spent
+ * there is no point queuing behind the cooldown — the answer is already late,
+ * so fail fast and let the UI report honestly instead of grinding.
+ */
+let budgetUntil = 0;
+export function setQueryBudget(ms: number): void {
+  budgetUntil = Date.now() + ms;
+}
+/** A budget of 0 means "no click in flight" — viewport loads wait normally. */
+const budgetLeft = () => budgetUntil === 0 || Date.now() < budgetUntil;
+
+async function awaitCooldown(): Promise<void> {
+  const wait = cooldownUntil - Date.now();
+  if (wait <= 0) return;
+  if (!budgetLeft()) throw new Throttled("rate limited — cooling down");
+  // Never sleep past the click's budget; stop here instead.
+  const allowed = budgetUntil === 0 ? wait : Math.min(wait, budgetUntil - Date.now());
+  if (allowed > 0) await sleep(allowed);
+  if (!budgetLeft()) throw new Throttled("rate limited — cooling down");
+}
+function startCooldown(ms: number): void {
+  cooldownUntil = Math.max(cooldownUntil, Date.now() + ms);
+}
+
+/**
+ * Short-lived response cache, keyed by full query URL, plus in-flight
+ * de-duplication. Panning, re-clicking the same spot and the ↻ refresh all
+ * re-issue identical queries; serving those from memory is the difference
+ * between staying under the rate limit and tripping it.
+ */
+const CACHE_TTL = 60_000;
+const CACHE_MAX = 300;
+const cache = new Map<string, { at: number; data: ArcFeature[] }>();
+const inFlight = new Map<string, Promise<ArcFeature[]>>();
+
+function cacheGet(url: string): ArcFeature[] | null {
+  const hit = cache.get(url);
+  if (!hit) return null;
+  if (Date.now() - hit.at > CACHE_TTL) {
+    cache.delete(url);
+    return null;
+  }
+  return hit.data;
+}
+
+function cachePut(url: string, data: ArcFeature[]): void {
+  if (cache.size >= CACHE_MAX) {
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
+  cache.set(url, { at: Date.now(), data });
+}
+
+/** Jittered exponential backoff, so retries of the same burst don't collide. */
+function backoffMs(attempt: number): number {
+  return 400 * 2 ** attempt + Math.random() * 250;
+}
 
 export interface ArcFeature {
   attributes: Record<string, unknown>;
@@ -76,31 +172,68 @@ async function arcQuery(
 
   const url = `${base}/${svc}/FeatureServer/${layer}/query?${new URLSearchParams(params)}`;
 
-  // One retry on transient failures (network hiccup, timeout, 5xx) — the FAA
-  // services occasionally stall when several layers are requested at once.
-  let lastErr: unknown;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), TIMEOUT);
-    try {
-      const res = await fetch(url, { signal: ac.signal });
-      if (res.status >= 500) throw new Error(`FAA layer HTTP ${res.status}`);
-      if (!res.ok) throw new Error(`FAA layer HTTP ${res.status}`);
-      const json = (await res.json()) as {
-        features?: ArcFeature[];
-        error?: { message: string };
-      };
-      if (json.error) throw new Error(json.error.message);
-      return json.features || [];
-    } catch (e) {
-      lastErr = e;
-      if (attempt === 1) throw e;
-      await new Promise((r) => setTimeout(r, 700));
-    } finally {
-      clearTimeout(timer);
+  const cached = cacheGet(url);
+  if (cached) return cached;
+  const pending = inFlight.get(url);
+  if (pending) return pending;
+
+  const run = async (): Promise<ArcFeature[]> => {
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
+      await awaitCooldown();
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), TIMEOUT);
+      try {
+        const res = await fetch(url, { signal: ac.signal });
+        // 408/425/429 and 5xx are throttling or a hiccup — retry. Any other
+        // non-OK status is our query being wrong, which no retry will fix.
+        if (res.status >= 500 || res.status === 408 || res.status === 425 || res.status === 429) {
+          throw new Error(`FAA layer HTTP ${res.status}`);
+        }
+        if (!res.ok) throw new QueryRejected(`FAA layer HTTP ${res.status}`);
+        const json = (await res.json()) as {
+          features?: ArcFeature[];
+          error?: { message: string };
+        };
+        if (json.error) {
+          const msg = json.error.message || "query failed";
+          // Rate limiting arrives as an error body on a 200. Retry once, and
+          // hold the whole fan-out back — hammering a limiter just deepens the
+          // hole, so a throttled layer does not burn the full attempt budget.
+          if (isThrottleMessage(msg)) {
+            // One paced retry per call (the top of the loop waits the shared
+            // cooldown), plus the caller's second pass — enough to ride out a
+            // short window without ever hammering the limiter.
+            startCooldown(2500);
+            throw new Throttled(msg);
+          }
+          // Otherwise the service answered and refused the query (bad field,
+          // bad geometry). Retrying returns the same error.
+          throw new QueryRejected(msg);
+        }
+        const data = json.features || [];
+        cachePut(url, data);
+        return data;
+      } catch (e) {
+        lastErr = e;
+        const done = attempt === ATTEMPTS - 1;
+        // A rejected query fails identically however often we ask. A throttled
+        // layer gets exactly one paced retry here (the loop waits the shared
+        // cooldown first), then the caller's second pass has another go.
+        const retryable =
+          !(e instanceof QueryRejected) && !(e instanceof Throttled && attempt >= 1);
+        if (!retryable || done) throw e;
+        await sleep(backoffMs(attempt));
+      } finally {
+        clearTimeout(timer);
+      }
     }
-  }
-  throw lastErr;
+    throw lastErr;
+  };
+
+  const pendingReq = run().finally(() => inFlight.delete(url));
+  inFlight.set(url, pendingReq);
+  return pendingReq;
 }
 
 /** Great-circle distance in metres. */
